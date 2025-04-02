@@ -1,0 +1,59 @@
+syntax = "proto3";
+package tutorial;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "/tutorialpb";
+
+message Address {
+  //  street name and number
+  string street = 1;
+  // city name
+  string city = 2;
+  // USA zipcode
+  int32 zipcode = 3;
+}
+
+message Person {
+  // Name
+  string name = 1;
+  int32 id = 2;  // Unique ID number for this person.
+  // email address
+  string email = 3;
+
+
+
+  // Person's phone number
+  message PhoneNumber {
+    string number = 1;
+    PhoneType type = 2;
+  }
+
+  repeated PhoneNumber phones = 4;
+
+  google.protobuf.Timestamp last_updated = 5;
+
+  Address physical_address = 6;
+}
+
+// Phone Number type
+enum PhoneType {
+  // Unspecified type
+  PHONE_TYPE_UNSPECIFIED = 0;
+  // Mobile phone
+  PHONE_TYPE_MOBILE = 1;
+  // Landline phone
+  PHONE_TYPE_HOME = 2;
+  // Work or Business phone
+  PHONE_TYPE_WORK = 3;
+}
+
+// Our address book file is just one of these.
+message AddressBook {
+  repeated Person people = 1;
+}
+
+message Nothing {
+  // Just a nothing burger
+  string burger = 1;
+}

@@ -1,0 +1,49 @@
+AddressBook {
+    people [
+               Person {
+                 // Name
+                 string name
+
+                 // Unique ID number for this person.
+                 int32 id
+
+                 // email address
+                 string email
+
+                 phones [
+                   // Person's phone number
+                   PhoneNumber {
+                       string number
+
+                       // Phone Number type
+                       PhoneType type {
+                         PHONE_TYPE_UNSPECIFIED
+
+                         // Mobile phone
+                         PHONE_TYPE_MOBILE
+
+                         // Landline phone
+                         PHONE_TYPE_HOME
+
+                         // Work or Business phone
+                         PHONE_TYPE_WORK
+                       }
+                   }
+                 ]
+
+                 google.protobuf.Timestamp last_updated
+
+                 physical_address Address {
+                    //  street name and number
+                    string street
+
+                    // city name
+                    string city
+
+                    // USA zipcode
+                    int32 zipcode
+                  }
+               }
+           ]
+}
+
