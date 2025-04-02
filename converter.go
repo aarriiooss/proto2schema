@@ -250,26 +250,6 @@ func indexNestedMessages(parent string, msg *descriptorpb.DescriptorProto, paren
 	}
 }
 
-// processMessage recursively prints message information, flattening nested types.
-func processMessage(msg *descriptorpb.DescriptorProto, prefix string, outFile *os.File) {
-	// Build the fully qualified message name.
-	fullName := msg.GetName()
-	if prefix != "" {
-		fullName = prefix + "." + fullName
-	}
-	fmt.Fprintf(outFile, "Message: %s\n", fullName)
-
-	// Print fields (customize as needed to show type shapes)
-	for _, field := range msg.Field {
-		fmt.Fprintf(outFile, "  Field: %s (type: %s)\n", field.GetName(), field.GetType().String())
-	}
-
-	// Recursively process nested messages.
-	for _, nested := range msg.NestedType {
-		processMessage(nested, fullName, outFile)
-	}
-}
-
 // equalPath compares two slices of int32 for equality.
 func equalPath(a, b protoPath) bool {
 	if len(a) != len(b) {
