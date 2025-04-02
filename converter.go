@@ -100,26 +100,6 @@ func main() {
 
 }
 
-// findMessageIndex returns the index of a message in a slice by name.
-func findMessageIndex(msgs []*descriptorpb.DescriptorProto, name string) int32 {
-	for i, m := range msgs {
-		if m.GetName() == name {
-			return int32(i)
-		}
-	}
-	return -1
-}
-
-// findFieldIndex returns the index of a field in a slice by name.
-func findFieldIndex(fields []*descriptorpb.FieldDescriptorProto, name string) int32 {
-	for i, f := range fields {
-		if f.GetName() == name {
-			return int32(i)
-		}
-	}
-	return -1
-}
-
 func printCommentIfAny(outFile *os.File, path protoPath, level int) {
 	// In this stub, we assume that if a path is provided and a comment is found, we print it.
 	// For example, you might iterate over sourceInfo.Location and compare the Path.
