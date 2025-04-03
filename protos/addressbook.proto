@@ -2,9 +2,11 @@ syntax = "proto3";
 package tutorial;
 
 import "google/protobuf/timestamp.proto";
+import "phonenumber.proto";
 
 option go_package = "/tutorialpb";
 
+// Address message
 message Address {
   //  street name and number
   string street = 1;
@@ -21,31 +23,12 @@ message Person {
   // email address
   string email = 3;
 
-
-
-  // Person's phone number
-  message PhoneNumber {
-    string number = 1;
-    PhoneType type = 2;
-  }
-
   repeated PhoneNumber phones = 4;
 
   google.protobuf.Timestamp last_updated = 5;
 
+  // physical address field
   Address physical_address = 6;
-}
-
-// Phone Number type
-enum PhoneType {
-  // Unspecified type
-  PHONE_TYPE_UNSPECIFIED = 0;
-  // Mobile phone
-  PHONE_TYPE_MOBILE = 1;
-  // Landline phone
-  PHONE_TYPE_HOME = 2;
-  // Work or Business phone
-  PHONE_TYPE_WORK = 3;
 }
 
 // Our address book file is just one of these.

@@ -1,0 +1,22 @@
+syntax = "proto3";
+package tutorial;
+
+option go_package = "/tutorialpb";
+
+// Person's phone number
+message PhoneNumber {
+  string number = 1;
+  PhoneType type = 2;
+}
+
+// Phone Number type
+enum PhoneType {
+  // Unspecified type
+  PHONE_TYPE_UNSPECIFIED = 0;
+  // Mobile phone
+  PHONE_TYPE_MOBILE = 1;
+  // Landline phone
+  PHONE_TYPE_HOME = 2;
+  // Work or Business phone
+  PHONE_TYPE_WORK = 3;
+}
