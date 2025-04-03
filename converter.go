@@ -44,13 +44,12 @@ type enumIndexMetadata struct {
 	key string
 }
 
-type protoPathIndexType map[string]protoPath
-type messageIndexType map[string]*descriptorpb.DescriptorProto
-type enumIndexType map[string]*descriptorpb.EnumDescriptorProto
+type messageIndexType map[string]*messageIndexMetadata
+type enumIndexType map[string]*enumIndexMetadata
 
 type protoIndex struct {
-	messageIndex map[string]*messageIndexMetadata
-	enumIndex    map[string]*enumIndexMetadata
+	messageIndex messageIndexType
+	enumIndex    enumIndexType
 }
 
 type msgOrEnumType interface {
@@ -59,48 +58,12 @@ type msgOrEnumType interface {
 
 func (p protoIndex) addMessage(key string, path protoPath, file *descriptorpb.FileDescriptorProto, message *descriptorpb.DescriptorProto) {
 	if _, ok := p.messageIndex[key]; !ok {
-		p.messageIndex[key] = &messageIndexMetadata{
-			//descriptor: message,
-			//fileDescriptor: file,
-			//path: path,
-			//key: key,
-		}
+		p.messageIndex[key] = &messageIndexMetadata{}
 	}
 	p.messageIndex[key].descriptor = message
 	p.messageIndex[key].fileDescriptor = file
 	p.messageIndex[key].path = path
 	p.messageIndex[key].key = key
-}
-
-func (p protoIndex) fetchMetadata(key string) {}
-
-func (p protoIndex) fetchComment(key string) string {
-	//var metadata any
-	//if _, ok := p.messageIndex[key]; !ok {
-	//	if _, ok := p.enumIndex[key]; !ok {
-	//		return "KEY NOT FOUND!"
-	//	} else {
-	//		metadata = p.enumIndex[key]
-	//		metadata = metadata.(*enumIndexMetadata)
-	//	}
-	//} else {
-	//	metadata = p.messageIndex[key]
-	//	metadata = metadata.(*messageIndexMetadata)
-	//}
-	//
-	//sourceLocation := metadata.fileDescriptor.Location
-	//
-	//for _, loc := range sourceInfo.Location {
-	//	if equalPath(loc.Path, path) {
-	//		comment := strings.TrimSpace(loc.GetLeadingComments())
-	//		if comment == "" {
-	//			comment = strings.TrimSpace(loc.GetTrailingComments())
-	//		}
-	//		return comment
-	//	}
-	//}
-	//return ""
-	return ""
 }
 
 func (p protoIndex) addEnum(key string, path protoPath, file *descriptorpb.FileDescriptorProto, message *descriptorpb.EnumDescriptorProto) {
@@ -119,14 +82,6 @@ func newProtoIndex() *protoIndex {
 		enumIndex:    make(map[string]*enumIndexMetadata),
 	}
 }
-
-// Global maps to resolve message and enum definitions by fully-qualified name.
-var messageIndex = make(messageIndexType)
-var enumIndex = make(enumIndexType)
-var protoPathIndex = make(protoPathIndexType)
-
-// For simplicity, assume all definitions come from one file.
-//var sourceInfo *descriptorpb.SourceCodeInfo
 
 func main() {
 	descriptorPath := "gen/addressbook.binpb"
@@ -156,19 +111,15 @@ func main() {
 		// Build lookup maps for top-level messages and enums.
 		for i, msg := range file.MessageType {
 			fqName := packageName + "." + msg.GetName()
-			messageIndex[fqName] = msg
 			topMsgPath := protoPath{4, int32(i)}
 			pIndex.addMessage(fqName, topMsgPath, file, msg)
-			protoPathIndex[fqName] = topMsgPath
 			//indexNestedMessages(fqName, msg, file, topMsgPath, pIndex)
 			indexNestedMessages(ctx, fqName)
 
 		}
 		for i, enum := range file.EnumType {
 			fqName := packageName + "." + enum.GetName()
-			enumIndex[fqName] = enum
 			enumPath := protoPath{5, int32(i)}
-			protoPathIndex[fqName] = enumPath
 			pIndex.addEnum(fqName, enumPath, file, enum)
 		}
 	}
@@ -186,18 +137,9 @@ func main() {
 		}
 	}(outFile)
 
-	for _, ep := range findEntrypoints() {
+	for _, ep := range findEntrypoints(pIndex.messageIndex) {
 		if _, ok := pIndex.messageIndex[ep]; ok {
-			//entryPoint := entryPointMetadata.descriptor
-			//entryPointPath := entryPointMetadata.path
 			printMessage(ctx, outFile, ep, 0)
-			//if entryPointPath, ok := protoPathIndex[ep]; ok {
-			//	printMessage(outFile, entryPoint, entryPointPath, 0)
-			//} else {
-			//	log.Println("Failed to find path for entrypoint")
-			//}
-
-			//fmt.Fprintf(outFile, "\n")
 		}
 	}
 
@@ -240,7 +182,6 @@ func indent(level int) string {
 
 // printMessage prints a message definition following the desired format.
 // It handles scalar fields, nested message fields, and enum fields.
-// {/*msg *descriptorpb.DescriptorProto, path protoPath, ) {*/
 func printMessage(ctx context.Context, outFile *os.File, msgKey string, level int) {
 	protoIndexes := ctx.Value(protoIndexKey).(*protoIndex)
 
@@ -257,7 +198,7 @@ func printMessage(ctx context.Context, outFile *os.File, msgKey string, level in
 	for i, field := range msg.Field {
 		// For a field, the path is the message's path plus [2, field_index] (2 = message.field)
 		fieldPath := append(append([]int32(nil), path...), 2, int32(i))
-		// (A complete implementation would derive the path based on the descriptor structure.)
+
 		printCommentIfAny(outFile, msgMetadata.fileDescriptor, fieldPath, level+1)
 
 		// Depending on field type and label, print accordingly.
@@ -269,22 +210,11 @@ func printMessage(ctx context.Context, outFile *os.File, msgKey string, level in
 				typeName := field.GetTypeName()
 				if _, ok := protoIndexes.messageIndex[typeName]; ok {
 					printMessage(ctx, outFile, typeName, level+2)
-					// Optionally print a comment for the field if available.
-					//if nestedPath, ok := protoPathIndex[typeName]; ok {
-					//	printMessage(outFile, m, nestedPath, level+2)
-					//} else {
-					//	printMessage(outFile, m, nil, level+2)
-					//}
 				}
 			} else if field.GetType() == descriptorpb.FieldDescriptorProto_TYPE_ENUM {
 				typeName := field.GetTypeName()
 				if _, ok := protoIndexes.enumIndex[typeName]; ok {
 					printEnum(ctx, outFile, typeName, level+2)
-					//if enumPath, ok := protoPathIndex[typeName]; ok {
-					//	printEnum(ctx, outFile, e, enumPath, level+2)
-					//} else {
-					//	printEnum(ctx, outFile, e, nil, level+2)
-					//}
 				}
 			}
 			fmt.Fprintf(outFile, "%s]\n", indent(level+1))
@@ -293,13 +223,8 @@ func printMessage(ctx context.Context, outFile *os.File, msgKey string, level in
 			if field.GetType() == descriptorpb.FieldDescriptorProto_TYPE_MESSAGE {
 				typeName := field.GetTypeName()
 				fmt.Fprintf(outFile, "%s%s %s {\n", indent(level+1), field.GetName(), typeName)
-				if _, ok := messageIndex[typeName]; ok {
+				if _, ok := protoIndexes.messageIndex[typeName]; ok {
 					printMessage(ctx, outFile, typeName, level+2)
-					//if nestedPath, ok := protoPathIndex[typeName]; ok {
-					//	printMessage(outFile, m, nestedPath, level+2)
-					//} else {
-					//	printMessage(outFile, m, nil, level+2)
-					//}
 				}
 				fmt.Fprintf(outFile, "%s}\n", indent(level+1))
 			} else if field.GetType() == descriptorpb.FieldDescriptorProto_TYPE_ENUM {
@@ -309,11 +234,6 @@ func printMessage(ctx context.Context, outFile *os.File, msgKey string, level in
 				fmt.Fprintf(outFile, "%s%s %s {\n", indent(level+1), "ENUM", readableTypeName)
 				if _, ok := protoIndexes.enumIndex[typeName]; ok {
 					printEnum(ctx, outFile, typeName, level+2)
-					//if enumPath, ok := protoPathIndex[typeName]; ok {
-					//	printEnum(ctx, outFile, e, enumPath, level+2)
-					//} else {
-					//	printEnum(ctx, outFile, e, nil, level+2)
-					//}
 				}
 				fmt.Fprintf(outFile, "%s}\n", indent(level+1))
 			} else {
@@ -328,7 +248,6 @@ func printMessage(ctx context.Context, outFile *os.File, msgKey string, level in
 }
 
 // printEnum prints an enum definition with its values and comments.
-// enum *descriptorpb.EnumDescriptorProto, path protoPath,
 func printEnum(ctx context.Context, outFile *os.File, key string, level int) {
 	protoIndexes := ctx.Value(protoIndexKey).(*protoIndex)
 	enumMetadata := protoIndexes.enumIndex[key]
@@ -347,14 +266,14 @@ func printEnum(ctx context.Context, outFile *os.File, key string, level int) {
 }
 
 // entrypoint is any message that doesn't appear in other fields (or types?)
-func findEntrypoints() []string {
+func findEntrypoints(messageIndex messageIndexType) []string {
 	// Create a set to track used message types.
 	used := make(map[string]bool)
 
 	// Iterate through all messages in the messageIndex.
-	for _, msg := range messageIndex {
+	for _, metadata := range messageIndex {
 		// Process fields in this message.
-		for _, field := range msg.Field {
+		for _, field := range metadata.descriptor.Field {
 			if field.GetType() == descriptorpb.FieldDescriptorProto_TYPE_MESSAGE {
 				// Mark the type as used. The field type name should be fully qualified.
 				used[field.GetTypeName()] = true
@@ -392,26 +311,6 @@ func indexNestedMessages(ctx context.Context, parent string) {
 		}
 	}
 
-}
-
-// indexNestedMessages recursively indexes nested message types.
-func indexNestedMessages2(parent string, msg *descriptorpb.DescriptorProto, parentFile *descriptorpb.FileDescriptorProto, parentPath []int32, protoIndexes *protoIndex) {
-	for j, nested := range msg.NestedType {
-		fqName := parent + "." + nested.GetName()
-		messageIndex[fqName] = nested
-		nestedPath := append(append([]int32(nil), parentPath...), 3, int32(j))
-		protoPathIndex[fqName] = nestedPath
-		protoIndexes.addMessage(fqName, nestedPath, parentFile, nested)
-		indexNestedMessages2(fqName, nested, parentFile, nestedPath, protoIndexes)
-	}
-	// Also index any enums nested in this message.
-	for j, enum := range msg.EnumType {
-		fqName := parent + "." + enum.GetName()
-		enumPath := append(append([]int32(nil), parentPath...), 4, int32(j))
-		enumIndex[fqName] = enum
-		protoPathIndex[fqName] = enumPath
-		protoIndexes.addEnum(fqName, enumPath, parentFile, enum)
-	}
 }
 
 // equalPath compares two slices of int32 for equality.
