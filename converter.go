@@ -169,7 +169,6 @@ func main() {
 			printMessage(ctx, sw, ep, 0)
 		}
 	}
-
 }
 
 func printCommentIfAny(w SchemaWriter, fileDescriptor *descriptorpb.FileDescriptorProto, path protoPath, level int) {
@@ -217,7 +216,9 @@ func printMessage(ctx context.Context, w SchemaWriter, msgKey string, level int)
 				}
 			} else if field.GetType() == descriptorpb.FieldDescriptorProto_TYPE_ENUM {
 				typeName := field.GetTypeName()
-				if _, ok := protoIndexes.enumIndex[typeName]; ok {
+
+				if enumMeta, ok := protoIndexes.enumIndex[typeName]; ok {
+					printCommentIfAny(w, enumMeta.fileDescriptor, enumMeta.path, level+2)
 					printEnum(ctx, w, typeName, level+2)
 				}
 			}
@@ -235,15 +236,17 @@ func printMessage(ctx context.Context, w SchemaWriter, msgKey string, level int)
 				typeName := field.GetTypeName()
 				typeNameSplit := strings.Split(typeName, ".")
 				readableTypeName := typeNameSplit[len(typeNameSplit)-1]
-				w.Writef(level+1, "%s %s {\n", "ENUM", readableTypeName)
-				if _, ok := protoIndexes.enumIndex[typeName]; ok {
+
+				if enumMeta, ok := protoIndexes.enumIndex[typeName]; ok {
+					printCommentIfAny(w, enumMeta.fileDescriptor, enumMeta.path, level+1)
+					w.Writef(level+1, "%s %s {\n", "ENUM", readableTypeName)
 					printEnum(ctx, w, typeName, level+2)
 				}
 				w.Writef(level+1, "}\n")
 			} else {
 				humeanReadableTypeSplit := strings.Split(field.GetType().String(), "_")
 				humanReadableTypeName := humeanReadableTypeSplit[len(humeanReadableTypeSplit)-1]
-				w.Writef(level+1, "%s %s\n", humanReadableTypeName, field.GetName())
+				w.Writef(level+1, "%s %s\n\n", humanReadableTypeName, field.GetName())
 			}
 		}
 	}
@@ -259,7 +262,6 @@ func printEnum(ctx context.Context, w SchemaWriter, key string, level int) {
 	path := enumMetadata.path
 
 	// Optionally print a comment for the enum.
-	printCommentIfAny(w, enumMetadata.fileDescriptor, path, level)
 	for i, value := range enum.Value {
 		// For an enum value, the path is the enum's path plus [2, value_index] (2 = enum.value)
 		valuePath := append(append([]int32(nil), path...), 2, int32(i))
