@@ -166,7 +166,7 @@ func main() {
 
 	for _, ep := range findEntrypoints(pIndex.messageIndex) {
 		if _, ok := pIndex.messageIndex[ep]; ok {
-			printMessage(ctx, sw, ep, 0)
+			printMessage(ctx, sw, ep, 0, make(map[string]bool))
 		}
 	}
 }
@@ -185,12 +185,25 @@ func printCommentIfAny(w SchemaWriter, fileDescriptor *descriptorpb.FileDescript
 
 // printMessage prints a message definition following the desired format.
 // It handles scalar fields, nested message fields, and enum fields.
-func printMessage(ctx context.Context, w SchemaWriter, msgKey string, level int) {
+func printMessage(
+	ctx context.Context,
+	w SchemaWriter,
+	msgKey string,
+	level int,
+	visited map[string]bool,
+) {
 	protoIndexes := ctx.Value(protoIndexKey).(*protoIndex)
 
 	msgMetadata := protoIndexes.messageIndex[msgKey]
 	msg := msgMetadata.descriptor
 	path := msgMetadata.path
+
+	if visited[msgKey] {
+		w.Writef(level, "<Circular Ref> %s\n", msg.GetName())
+		return
+	}
+	visited[msgKey] = true
+	defer delete(visited, msgKey)
 
 	// If there is a comment on the message, print it.
 	printCommentIfAny(w, msgMetadata.fileDescriptor, path, level)
@@ -212,7 +225,7 @@ func printMessage(ctx context.Context, w SchemaWriter, msgKey string, level int)
 			if field.GetType() == descriptorpb.FieldDescriptorProto_TYPE_MESSAGE {
 				typeName := field.GetTypeName()
 				if _, ok := protoIndexes.messageIndex[typeName]; ok {
-					printMessage(ctx, w, typeName, level+2)
+					printMessage(ctx, w, typeName, level+2, visited)
 				}
 			} else if field.GetType() == descriptorpb.FieldDescriptorProto_TYPE_ENUM {
 				typeName := field.GetTypeName()
@@ -229,7 +242,7 @@ func printMessage(ctx context.Context, w SchemaWriter, msgKey string, level int)
 				typeName := field.GetTypeName()
 				w.Writef(level+1, "%s %s {\n", field.GetName(), typeName)
 				if _, ok := protoIndexes.messageIndex[typeName]; ok {
-					printMessage(ctx, w, typeName, level+2)
+					printMessage(ctx, w, typeName, level+2, visited)
 				}
 				w.Writef(level+1, "}\n")
 			} else if field.GetType() == descriptorpb.FieldDescriptorProto_TYPE_ENUM {

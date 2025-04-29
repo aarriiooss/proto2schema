@@ -29,6 +29,9 @@ message Person {
 
   // physical address field
   Address physical_address = 6;
+
+  // recursive field
+  repeated Person contacts = 7;
 }
 
 // Our address book file is just one of these.
