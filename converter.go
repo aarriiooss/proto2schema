@@ -19,8 +19,8 @@ type descriptorConstraint interface {
 		*descriptorpb.EnumDescriptorProto
 }
 
-type indexMetadata[D descriptorConstraint] struct {
-	descriptor D
+type indexMetadata[T descriptorConstraint] struct {
+	descriptor T
 	// file descriptor of the file this message belongs to
 	// useful for picking out comments or anything else we can't get at the message level
 	fileDescriptor *descriptorpb.FileDescriptorProto
@@ -40,16 +40,16 @@ type protoIndex struct {
 	enumIndex    enumIndexType
 }
 
-func addMetadata[D descriptorConstraint](
-	indexMap map[string]*indexMetadata[D],
+func addMetadata[T descriptorConstraint](
+	indexMap map[string]*indexMetadata[T],
 	key string,
-	descriptor D,
+	descriptor T,
 	file *descriptorpb.FileDescriptorProto,
 	path protoPath,
 ) {
 	md, ok := indexMap[key]
 	if !ok {
-		md = &indexMetadata[D]{}
+		md = &indexMetadata[T]{}
 		indexMap[key] = md
 	}
 	md.descriptor = descriptor
