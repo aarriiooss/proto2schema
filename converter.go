@@ -14,10 +14,13 @@ const protoIndexKey = iota
 
 type protoPath []int32
 
-type messageIndexMetadata struct {
-	// proto descriptor of the message which contains fields etc
-	descriptor *descriptorpb.DescriptorProto
+type descriptorConstraint interface {
+	*descriptorpb.DescriptorProto |
+		*descriptorpb.EnumDescriptorProto
+}
 
+type indexMetadata[D descriptorConstraint] struct {
+	descriptor D
 	// file descriptor of the file this message belongs to
 	// useful for picking out comments or anything else we can't get at the message level
 	fileDescriptor *descriptorpb.FileDescriptorProto
@@ -29,57 +32,44 @@ type messageIndexMetadata struct {
 	key string
 }
 
-type enumIndexMetadata struct {
-	// proto descriptor for enum - maybe union type in the future?
-	descriptor *descriptorpb.EnumDescriptorProto
-
-	// file descriptor of the file this message belongs to
-	// useful for picking out comments or anything else we can't get at the message level
-	fileDescriptor *descriptorpb.FileDescriptorProto
-
-	// path of this field in sourceInfo from fileDescriptor
-	path protoPath
-
-	// key in parent map - is this needed?
-	key string
-}
-
-type messageIndexType map[string]*messageIndexMetadata
-type enumIndexType map[string]*enumIndexMetadata
+type messageIndexType map[string]*indexMetadata[*descriptorpb.DescriptorProto]
+type enumIndexType map[string]*indexMetadata[*descriptorpb.EnumDescriptorProto]
 
 type protoIndex struct {
 	messageIndex messageIndexType
 	enumIndex    enumIndexType
 }
 
-type msgOrEnumType interface {
-	*descriptorpb.DescriptorProto | *descriptorpb.EnumDescriptorProto
+func addMetadata[D descriptorConstraint](
+	indexMap map[string]*indexMetadata[D],
+	key string,
+	descriptor D,
+	file *descriptorpb.FileDescriptorProto,
+	path protoPath,
+) {
+	md, ok := indexMap[key]
+	if !ok {
+		md = &indexMetadata[D]{}
+		indexMap[key] = md
+	}
+	md.descriptor = descriptor
+	md.fileDescriptor = file
+	md.path = path
+	md.key = key
 }
 
 func (p protoIndex) addMessage(key string, path protoPath, file *descriptorpb.FileDescriptorProto, message *descriptorpb.DescriptorProto) {
-	if _, ok := p.messageIndex[key]; !ok {
-		p.messageIndex[key] = &messageIndexMetadata{}
-	}
-	p.messageIndex[key].descriptor = message
-	p.messageIndex[key].fileDescriptor = file
-	p.messageIndex[key].path = path
-	p.messageIndex[key].key = key
+	addMetadata(p.messageIndex, key, message, file, path)
 }
 
 func (p protoIndex) addEnum(key string, path protoPath, file *descriptorpb.FileDescriptorProto, message *descriptorpb.EnumDescriptorProto) {
-	if _, ok := p.enumIndex[key]; !ok {
-		p.enumIndex[key] = &enumIndexMetadata{}
-	}
-	p.enumIndex[key].descriptor = message
-	p.enumIndex[key].fileDescriptor = file
-	p.enumIndex[key].key = key
-	p.enumIndex[key].path = path
+	addMetadata(p.enumIndex, key, message, file, path)
 }
 
 func newProtoIndex() *protoIndex {
 	return &protoIndex{
-		messageIndex: make(map[string]*messageIndexMetadata),
-		enumIndex:    make(map[string]*enumIndexMetadata),
+		messageIndex: make(messageIndexType),
+		enumIndex:    make(enumIndexType),
 	}
 }
 
