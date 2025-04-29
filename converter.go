@@ -180,7 +180,6 @@ func printCommentIfAny(w SchemaWriter, fileDescriptor *descriptorpb.FileDescript
 
 	comment := lookupComment(path, fileDescriptor.SourceCodeInfo)
 	if comment != "" {
-		//fmt.Fprintf(outFile, "%s// %s\n", indent(level), comment)
 		w.Writef(level, "// %s\n", comment)
 	}
 }
@@ -197,7 +196,6 @@ func printMessage(ctx context.Context, w SchemaWriter, msgKey string, level int)
 	// If there is a comment on the message, print it.
 	printCommentIfAny(w, msgMetadata.fileDescriptor, path, level)
 
-	//fmt.Fprintf(outFile, "%s%s {\n", indent(level), msg.GetName())
 	w.Writef(level, "%s {\n", msg.GetName())
 
 	// For each field in the message:
@@ -210,7 +208,6 @@ func printMessage(ctx context.Context, w SchemaWriter, msgKey string, level int)
 		// Depending on field type and label, print accordingly.
 		if field.GetLabel() == descriptorpb.FieldDescriptorProto_LABEL_REPEATED {
 			// For repeated fields, use square brackets.
-			//fmt.Fprintf(outFile, "%s%s [\n", indent(level+1), field.GetName())
 			w.Writef(level+1, "%s [\n", field.GetName())
 			// If the field is a message, print its definition inline.
 			if field.GetType() == descriptorpb.FieldDescriptorProto_TYPE_MESSAGE {
@@ -224,40 +221,33 @@ func printMessage(ctx context.Context, w SchemaWriter, msgKey string, level int)
 					printEnum(ctx, w, typeName, level+2)
 				}
 			}
-			//fmt.Fprintf(outFile, "%s]\n", indent(level+1))
 			w.Writef(level+1, "]\n")
 		} else {
 			// For non-repeated fields, if the type is a message or enum, print inline.
 			if field.GetType() == descriptorpb.FieldDescriptorProto_TYPE_MESSAGE {
 				typeName := field.GetTypeName()
-				//fmt.Fprintf(outFile, "%s%s %s {\n", indent(level+1), field.GetName(), typeName)
 				w.Writef(level+1, "%s %s {\n", field.GetName(), typeName)
 				if _, ok := protoIndexes.messageIndex[typeName]; ok {
 					printMessage(ctx, w, typeName, level+2)
 				}
-				//fmt.Fprintf(outFile, "%s}\n", indent(level+1))
 				w.Writef(level+1, "}\n")
 			} else if field.GetType() == descriptorpb.FieldDescriptorProto_TYPE_ENUM {
 				typeName := field.GetTypeName()
 				typeNameSplit := strings.Split(typeName, ".")
 				readableTypeName := typeNameSplit[len(typeNameSplit)-1]
-				//fmt.Fprintf(outFile, "%s%s %s {\n", indent(level+1), "ENUM", readableTypeName)
 				w.Writef(level+1, "%s %s {\n", "ENUM", readableTypeName)
 				if _, ok := protoIndexes.enumIndex[typeName]; ok {
 					printEnum(ctx, w, typeName, level+2)
 				}
-				//fmt.Fprintf(outFile, "%s}\n", indent(level+1))
 				w.Writef(level+1, "}\n")
 			} else {
 				humeanReadableTypeSplit := strings.Split(field.GetType().String(), "_")
 				humanReadableTypeName := humeanReadableTypeSplit[len(humeanReadableTypeSplit)-1]
-				//fmt.Fprintf(outFile, "%s%s %s\n", indent(level+1), humanReadableTypeName, field.GetName())
 				w.Writef(level+1, "%s %s\n", humanReadableTypeName, field.GetName())
 			}
 		}
 	}
 
-	//fmt.Fprintf(outFile, "%s}\n", indent(level))
 	w.Writef(level, "}\n")
 }
 
@@ -274,9 +264,7 @@ func printEnum(ctx context.Context, w SchemaWriter, key string, level int) {
 		// For an enum value, the path is the enum's path plus [2, value_index] (2 = enum.value)
 		valuePath := append(append([]int32(nil), path...), 2, int32(i))
 		printCommentIfAny(w, enumMetadata.fileDescriptor, valuePath, level)
-		//fmt.Fprintf(outFile, "%s%s", indent(level), value.GetName())
 		w.WriteLine(level, value.GetName())
-		//fmt.Fprintln(outFile)
 		w.WriteLine(level, "")
 	}
 }
