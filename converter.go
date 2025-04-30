@@ -13,6 +13,27 @@ import (
 
 const protoIndexKey = iota
 
+// Some fields, messages, etc have comments etc that are not useful
+type customProtoData struct {
+	customComment string
+	customType    string
+	customName    string
+}
+
+// currently only custom comment fetching is implemented
+var customProtoDataMap = map[string]customProtoData{
+	".google.protobuf.Timestamp": {
+		customComment: "In JSON format, the Timestamp type is encoded as a string in the RFC 3339 format.",
+		customType:    "",
+		customName:    "",
+	},
+	//".tutorial.PhoneType": {
+	//	customComment: "abcdef",
+	//	customType:    "",
+	//	customName:    "",
+	//},
+}
+
 type protoPath []int32
 
 type descriptorConstraint interface {
@@ -211,7 +232,7 @@ func main() {
 
 func printCommentIfAny(w SchemaWriter, comment string, level int) {
 	if comment != "" {
-		w.Writefln(level, comment)
+		w.Writefln(level, "// %s", comment)
 	}
 }
 
@@ -221,16 +242,16 @@ func getReadableTypeName(typeName string, splitter string) string {
 	return readableTypeName
 }
 
-func fetchCommentIfAny(fileDescriptor *descriptorpb.FileDescriptorProto, path protoPath) string {
+func fetchCommentIfAny(key string, fileDescriptor *descriptorpb.FileDescriptorProto, path protoPath) string {
+	if comment, ok := customProtoDataMap[key]; ok {
+		return comment.customComment
+	}
+
 	if strings.HasPrefix(fileDescriptor.GetPackage(), "google.") == true {
 		return ""
 	}
 	comment := lookupComment(path, fileDescriptor.SourceCodeInfo)
-	if comment == "" {
-		return comment
-	}
-
-	return fmt.Sprintf("// %s", comment)
+	return comment
 }
 
 // printMessage prints a message definition following the desired format.
@@ -256,7 +277,7 @@ func printMessage(
 	defer delete(visited, msgKey)
 
 	// If there is a comment on the message, print it.
-	printCommentIfAny(w, fetchCommentIfAny(msgMetadata.fileDescriptor, path), level)
+	printCommentIfAny(w, fetchCommentIfAny(msgKey, msgMetadata.fileDescriptor, path), level)
 
 	openBlock(w, level, msg.GetName())
 
@@ -265,7 +286,7 @@ func printMessage(
 		fieldPath := append(append([]int32(nil), path...), 2, int32(i))
 
 		typeName := field.GetTypeName()
-		printCommentIfAny(w, fetchCommentIfAny(msgMetadata.fileDescriptor, fieldPath), level+1)
+		printCommentIfAny(w, fetchCommentIfAny("", msgMetadata.fileDescriptor, fieldPath), level+1)
 		// Depending on field type and label, print accordingly.
 		if field.GetLabel() == descriptorpb.FieldDescriptorProto_LABEL_REPEATED {
 
@@ -277,7 +298,7 @@ func printMessage(
 
 			case descriptorpb.FieldDescriptorProto_TYPE_ENUM:
 				if enumMeta, ok := protoIndexes.enumIndex[typeName]; ok {
-					printCommentIfAny(w, fetchCommentIfAny(enumMeta.fileDescriptor, enumMeta.path), level+2)
+					printCommentIfAny(w, fetchCommentIfAny("", enumMeta.fileDescriptor, enumMeta.path), level+2)
 					openBlock(w, level+2, "ENUM "+enumMeta.descriptor.GetName())
 					printEnum(ctx, w, typeName, level+2)
 					closeBlock(w, level+2)
@@ -298,7 +319,7 @@ func printMessage(
 			} else if field.GetType() == descriptorpb.FieldDescriptorProto_TYPE_ENUM {
 				readableTypeName := getReadableTypeName(typeName, ".")
 				if enumMeta, ok := protoIndexes.enumIndex[typeName]; ok {
-					printCommentIfAny(w, fetchCommentIfAny(enumMeta.fileDescriptor, enumMeta.path), level+1)
+					printCommentIfAny(w, fetchCommentIfAny(typeName, enumMeta.fileDescriptor, enumMeta.path), level+1)
 					openEnum(w, level+1, "ENUM "+readableTypeName)
 					printEnum(ctx, w, typeName, level+2)
 					closeEnum(w, level+1)
@@ -327,7 +348,7 @@ func printEnum(ctx context.Context, w SchemaWriter, key string, level int) {
 	for i, value := range enum.Value {
 		// For an enum value, the path is the enum's path plus [2, value_index] (2 = enum.value)
 		valuePath := append(append([]int32(nil), path...), 2, int32(i))
-		printCommentIfAny(w, fetchCommentIfAny(enumMetadata.fileDescriptor, valuePath), level)
+		printCommentIfAny(w, fetchCommentIfAny("", enumMetadata.fileDescriptor, valuePath), level)
 		w.WriteLine(level, value.GetName())
 		if i == len(enum.Value)-1 {
 			continue

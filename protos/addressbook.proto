@@ -25,12 +25,13 @@ message Person {
 
   repeated PhoneNumber phones = 4;
 
+  // A comment for last_updated
   google.protobuf.Timestamp last_updated = 5;
 
   // physical address field
   Address physical_address = 6;
 
-  // recursive field
+  // An example of a recursive field.
   repeated Person contacts = 7;
 }
 
