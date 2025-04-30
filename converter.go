@@ -106,7 +106,7 @@ func (fw *fileWriter) WriteLine(level int, line string) {
 
 func (fw *fileWriter) Writefln(level int, format string, args ...interface{}) {
 	fw.Writef(level, format, args...)
-	fw.WriteLine(level, "")
+	fw.WriteLine(0, "")
 }
 
 func NewFileWriter(w io.Writer, l *log.Logger) SchemaWriter {
