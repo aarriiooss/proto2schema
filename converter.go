@@ -79,6 +79,8 @@ type SchemaWriter interface {
 	Writef(level int, format string, args ...interface{})
 	// WriteLine write raw line (with new line) with indentation level
 	WriteLine(level int, line string)
+	// Writefln adds a new line to Writef call
+	Writefln(level int, format string, args ...interface{})
 }
 
 type fileWriter struct {
@@ -102,6 +104,11 @@ func (fw *fileWriter) WriteLine(level int, line string) {
 	}
 }
 
+func (fw *fileWriter) Writefln(level int, format string, args ...interface{}) {
+	fw.Writef(level, format, args...)
+	fw.WriteLine(level, "")
+}
+
 func NewFileWriter(w io.Writer, l *log.Logger) SchemaWriter {
 	return &fileWriter{
 		writer: w,
@@ -110,23 +117,27 @@ func NewFileWriter(w io.Writer, l *log.Logger) SchemaWriter {
 }
 
 func openBlock(w SchemaWriter, level int, header string) {
-	w.Writef(level, "%s {", header)
-	w.WriteLine(level, "")
+	w.Writefln(level, "%s {", header)
 }
 
 func closeBlock(w SchemaWriter, level int) {
-	w.Writef(level, "}")
-	w.WriteLine(level, "")
+	w.Writefln(level, "}")
 }
 
 func openList(w SchemaWriter, level int, header string) {
-	w.Writef(level, "%s [", header)
-	w.WriteLine(level, "")
+	w.Writefln(level, "%s [", header)
 }
 
 func closeList(w SchemaWriter, level int) {
-	w.Writef(level, "]")
-	w.WriteLine(level, "")
+	w.Writefln(level, "]")
+}
+
+func openEnum(w SchemaWriter, level int, header string) {
+	w.Writefln(level, "%s (", header)
+}
+
+func closeEnum(w SchemaWriter, level int) {
+	w.Writefln(level, ")")
 }
 
 func main() {
@@ -248,7 +259,7 @@ func printMessage(
 	printCommentIfAny(w, msgMetadata.fileDescriptor, path, level)
 	//cmt := fetchCommentIfAny(msgMetadata.fileDescriptor, path)
 
-	w.Writef(level, "%s {\n", msg.GetName())
+	openBlock(w, level, msg.GetName())
 
 	for i, field := range msg.Field {
 		// For a field, the path is the message's path plus [2, field_index] (2 = message.field)
@@ -281,21 +292,20 @@ func printMessage(
 			// For non-repeated fields, if the type is a message or enum, print inline.
 			if field.GetType() == descriptorpb.FieldDescriptorProto_TYPE_MESSAGE {
 				header := fmt.Sprintf("%s %s", field.GetName(), typeName)
-				openBlock(w, level+1, header)
-
+				openEnum(w, level+1, header)
 				if _, ok := protoIndexes.messageIndex[typeName]; ok {
 					printMessage(ctx, w, typeName, level+2, visited)
 				}
-				closeBlock(w, level+1)
+				closeEnum(w, level+1)
 			} else if field.GetType() == descriptorpb.FieldDescriptorProto_TYPE_ENUM {
 				typeNameSplit := strings.Split(typeName, ".")
 				readableTypeName := typeNameSplit[len(typeNameSplit)-1]
 
 				if enumMeta, ok := protoIndexes.enumIndex[typeName]; ok {
 					printCommentIfAny(w, enumMeta.fileDescriptor, enumMeta.path, level+1)
-					openBlock(w, level+1, "ENUM "+readableTypeName)
+					openEnum(w, level+1, "ENUM "+readableTypeName)
 					printEnum(ctx, w, typeName, level+2)
-					closeBlock(w, level+1)
+					closeEnum(w, level+1)
 				}
 			} else {
 				humeanReadableTypeSplit := strings.Split(field.GetType().String(), "_")
