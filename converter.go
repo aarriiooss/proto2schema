@@ -109,6 +109,26 @@ func NewFileWriter(w io.Writer, l *log.Logger) SchemaWriter {
 	}
 }
 
+func openBlock(w SchemaWriter, level int, header string) {
+	w.Writef(level, "%s {", header)
+	w.WriteLine(level, "")
+}
+
+func closeBlock(w SchemaWriter, level int) {
+	w.Writef(level, "}")
+	w.WriteLine(level, "")
+}
+
+func openList(w SchemaWriter, level int, header string) {
+	w.Writef(level, "%s [", header)
+	w.WriteLine(level, "")
+}
+
+func closeList(w SchemaWriter, level int) {
+	w.Writef(level, "]")
+	w.WriteLine(level, "")
+}
+
 func main() {
 	descriptorPath := "gen/addressbook.binpb"
 	fdhSchemaPath := "gen/addressbook.fdhschema"
@@ -164,9 +184,16 @@ func main() {
 		}
 	}(outFile)
 
-	for _, ep := range findEntrypoints(pIndex.messageIndex) {
+	entryPoints := findEntrypoints(pIndex.messageIndex)
+
+	for i, ep := range entryPoints {
 		if _, ok := pIndex.messageIndex[ep]; ok {
 			printMessage(ctx, sw, ep, 0, make(map[string]bool))
+
+			// make sure we have a blank line between top level messages
+			if i != len(entryPoints)-1 {
+				sw.WriteLine(0, "")
+			}
 		}
 	}
 }
@@ -223,65 +250,65 @@ func printMessage(
 
 	w.Writef(level, "%s {\n", msg.GetName())
 
-	// For each field in the message:
 	for i, field := range msg.Field {
 		// For a field, the path is the message's path plus [2, field_index] (2 = message.field)
 		fieldPath := append(append([]int32(nil), path...), 2, int32(i))
+
+		typeName := field.GetTypeName()
 
 		printCommentIfAny(w, msgMetadata.fileDescriptor, fieldPath, level+1)
 
 		// Depending on field type and label, print accordingly.
 		if field.GetLabel() == descriptorpb.FieldDescriptorProto_LABEL_REPEATED {
-			// For repeated fields, use square brackets.
-			w.Writef(level+1, "%s [\n", field.GetName())
-			// If the field is a message, print its definition inline.
-			if field.GetType() == descriptorpb.FieldDescriptorProto_TYPE_MESSAGE {
-				typeName := field.GetTypeName()
-				if _, ok := protoIndexes.messageIndex[typeName]; ok {
-					printMessage(ctx, w, typeName, level+2, visited)
-				}
-			} else if field.GetType() == descriptorpb.FieldDescriptorProto_TYPE_ENUM {
-				typeName := field.GetTypeName()
 
+			openList(w, level+1, field.GetName())
+
+			switch field.GetType() {
+			case descriptorpb.FieldDescriptorProto_TYPE_MESSAGE:
+				printMessage(ctx, w, typeName, level+2, visited)
+
+			case descriptorpb.FieldDescriptorProto_TYPE_ENUM:
 				if enumMeta, ok := protoIndexes.enumIndex[typeName]; ok {
 					printCommentIfAny(w, enumMeta.fileDescriptor, enumMeta.path, level+2)
+					openBlock(w, level+2, "ENUM "+enumMeta.descriptor.GetName())
 					printEnum(ctx, w, typeName, level+2)
+					closeBlock(w, level+2)
 				}
 			}
-			w.Writef(level+1, "]\n\n")
+
+			closeList(w, level+1)
 		} else {
 			// For non-repeated fields, if the type is a message or enum, print inline.
 			if field.GetType() == descriptorpb.FieldDescriptorProto_TYPE_MESSAGE {
-				typeName := field.GetTypeName()
-				w.Writef(level+1, "%s %s {\n", field.GetName(), typeName)
+				header := fmt.Sprintf("%s %s", field.GetName(), typeName)
+				openBlock(w, level+1, header)
+
 				if _, ok := protoIndexes.messageIndex[typeName]; ok {
 					printMessage(ctx, w, typeName, level+2, visited)
 				}
-				w.Writef(level+1, "}\n\n")
+				closeBlock(w, level+1)
 			} else if field.GetType() == descriptorpb.FieldDescriptorProto_TYPE_ENUM {
-				typeName := field.GetTypeName()
 				typeNameSplit := strings.Split(typeName, ".")
 				readableTypeName := typeNameSplit[len(typeNameSplit)-1]
 
 				if enumMeta, ok := protoIndexes.enumIndex[typeName]; ok {
 					printCommentIfAny(w, enumMeta.fileDescriptor, enumMeta.path, level+1)
-					w.Writef(level+1, "%s %s {\n", "ENUM", readableTypeName)
+					openBlock(w, level+1, "ENUM "+readableTypeName)
 					printEnum(ctx, w, typeName, level+2)
+					closeBlock(w, level+1)
 				}
-				w.Writef(level+1, "}\n\n")
 			} else {
 				humeanReadableTypeSplit := strings.Split(field.GetType().String(), "_")
 				humanReadableTypeName := humeanReadableTypeSplit[len(humeanReadableTypeSplit)-1]
-				linebreaks := "\n\n"
-				if i == len(msg.Field)-1 {
-					linebreaks = "\n"
-				}
-				w.Writef(level+1, "%s %s%s", humanReadableTypeName, field.GetName(), linebreaks)
+				w.Writef(level+1, "%s %s\n", humanReadableTypeName, field.GetName())
 			}
+		}
+		if i != len(msg.Field)-1 {
+			w.WriteLine(level, "")
 		}
 	}
 
-	w.Writef(level, "}\n\n")
+	closeBlock(w, level)
 }
 
 // printEnum prints an enum definition with its values and comments.
