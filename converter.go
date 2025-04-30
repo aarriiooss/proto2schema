@@ -209,15 +209,9 @@ func main() {
 	}
 }
 
-func printCommentIfAny(w SchemaWriter, fileDescriptor *descriptorpb.FileDescriptorProto, path protoPath, level int) {
-	// remove comments from google fields as they are quite long
-	if strings.HasPrefix(fileDescriptor.GetPackage(), "google.") == true {
-		return
-	}
-
-	comment := lookupComment(path, fileDescriptor.SourceCodeInfo)
+func printCommentIfAny(w SchemaWriter, comment string, level int) {
 	if comment != "" {
-		w.Writef(level, "// %s\n", comment)
+		w.Writefln(level, comment)
 	}
 }
 
@@ -227,17 +221,17 @@ func getReadableTypeName(typeName string, splitter string) string {
 	return readableTypeName
 }
 
-//func fetchCommentIfAny(fileDescriptor *descriptorpb.FileDescriptorProto, path protoPath) string {
-//	if strings.HasPrefix(fileDescriptor.GetPackage(), "google.") == true {
-//		return ""
-//	}
-//	comment := lookupComment(path, fileDescriptor.SourceCodeInfo)
-//	if comment == "" {
-//		return comment
-//	}
-//
-//	return fmt.Sprintf("// %s", comment)
-//}
+func fetchCommentIfAny(fileDescriptor *descriptorpb.FileDescriptorProto, path protoPath) string {
+	if strings.HasPrefix(fileDescriptor.GetPackage(), "google.") == true {
+		return ""
+	}
+	comment := lookupComment(path, fileDescriptor.SourceCodeInfo)
+	if comment == "" {
+		return comment
+	}
+
+	return fmt.Sprintf("// %s", comment)
+}
 
 // printMessage prints a message definition following the desired format.
 // It handles scalar fields, nested message fields, and enum fields.
@@ -262,8 +256,7 @@ func printMessage(
 	defer delete(visited, msgKey)
 
 	// If there is a comment on the message, print it.
-	printCommentIfAny(w, msgMetadata.fileDescriptor, path, level)
-	//cmt := fetchCommentIfAny(msgMetadata.fileDescriptor, path)
+	printCommentIfAny(w, fetchCommentIfAny(msgMetadata.fileDescriptor, path), level)
 
 	openBlock(w, level, msg.GetName())
 
@@ -272,9 +265,7 @@ func printMessage(
 		fieldPath := append(append([]int32(nil), path...), 2, int32(i))
 
 		typeName := field.GetTypeName()
-
-		printCommentIfAny(w, msgMetadata.fileDescriptor, fieldPath, level+1)
-
+		printCommentIfAny(w, fetchCommentIfAny(msgMetadata.fileDescriptor, fieldPath), level+1)
 		// Depending on field type and label, print accordingly.
 		if field.GetLabel() == descriptorpb.FieldDescriptorProto_LABEL_REPEATED {
 
@@ -286,7 +277,7 @@ func printMessage(
 
 			case descriptorpb.FieldDescriptorProto_TYPE_ENUM:
 				if enumMeta, ok := protoIndexes.enumIndex[typeName]; ok {
-					printCommentIfAny(w, enumMeta.fileDescriptor, enumMeta.path, level+2)
+					printCommentIfAny(w, fetchCommentIfAny(enumMeta.fileDescriptor, enumMeta.path), level+2)
 					openBlock(w, level+2, "ENUM "+enumMeta.descriptor.GetName())
 					printEnum(ctx, w, typeName, level+2)
 					closeBlock(w, level+2)
@@ -307,7 +298,7 @@ func printMessage(
 			} else if field.GetType() == descriptorpb.FieldDescriptorProto_TYPE_ENUM {
 				readableTypeName := getReadableTypeName(typeName, ".")
 				if enumMeta, ok := protoIndexes.enumIndex[typeName]; ok {
-					printCommentIfAny(w, enumMeta.fileDescriptor, enumMeta.path, level+1)
+					printCommentIfAny(w, fetchCommentIfAny(enumMeta.fileDescriptor, enumMeta.path), level+1)
 					openEnum(w, level+1, "ENUM "+readableTypeName)
 					printEnum(ctx, w, typeName, level+2)
 					closeEnum(w, level+1)
@@ -336,7 +327,7 @@ func printEnum(ctx context.Context, w SchemaWriter, key string, level int) {
 	for i, value := range enum.Value {
 		// For an enum value, the path is the enum's path plus [2, value_index] (2 = enum.value)
 		valuePath := append(append([]int32(nil), path...), 2, int32(i))
-		printCommentIfAny(w, enumMetadata.fileDescriptor, valuePath, level)
+		printCommentIfAny(w, fetchCommentIfAny(enumMetadata.fileDescriptor, valuePath), level)
 		w.WriteLine(level, value.GetName())
 		if i == len(enum.Value)-1 {
 			continue
