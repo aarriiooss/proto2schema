@@ -183,6 +183,18 @@ func printCommentIfAny(w SchemaWriter, fileDescriptor *descriptorpb.FileDescript
 	}
 }
 
+//func fetchCommentIfAny(fileDescriptor *descriptorpb.FileDescriptorProto, path protoPath) string {
+//	if strings.HasPrefix(fileDescriptor.GetPackage(), "google.") == true {
+//		return ""
+//	}
+//	comment := lookupComment(path, fileDescriptor.SourceCodeInfo)
+//	if comment == "" {
+//		return comment
+//	}
+//
+//	return fmt.Sprintf("// %s", comment)
+//}
+
 // printMessage prints a message definition following the desired format.
 // It handles scalar fields, nested message fields, and enum fields.
 func printMessage(
@@ -207,6 +219,7 @@ func printMessage(
 
 	// If there is a comment on the message, print it.
 	printCommentIfAny(w, msgMetadata.fileDescriptor, path, level)
+	//cmt := fetchCommentIfAny(msgMetadata.fileDescriptor, path)
 
 	w.Writef(level, "%s {\n", msg.GetName())
 
@@ -235,7 +248,7 @@ func printMessage(
 					printEnum(ctx, w, typeName, level+2)
 				}
 			}
-			w.Writef(level+1, "]\n")
+			w.Writef(level+1, "]\n\n")
 		} else {
 			// For non-repeated fields, if the type is a message or enum, print inline.
 			if field.GetType() == descriptorpb.FieldDescriptorProto_TYPE_MESSAGE {
@@ -244,7 +257,7 @@ func printMessage(
 				if _, ok := protoIndexes.messageIndex[typeName]; ok {
 					printMessage(ctx, w, typeName, level+2, visited)
 				}
-				w.Writef(level+1, "}\n")
+				w.Writef(level+1, "}\n\n")
 			} else if field.GetType() == descriptorpb.FieldDescriptorProto_TYPE_ENUM {
 				typeName := field.GetTypeName()
 				typeNameSplit := strings.Split(typeName, ".")
@@ -255,16 +268,20 @@ func printMessage(
 					w.Writef(level+1, "%s %s {\n", "ENUM", readableTypeName)
 					printEnum(ctx, w, typeName, level+2)
 				}
-				w.Writef(level+1, "}\n")
+				w.Writef(level+1, "}\n\n")
 			} else {
 				humeanReadableTypeSplit := strings.Split(field.GetType().String(), "_")
 				humanReadableTypeName := humeanReadableTypeSplit[len(humeanReadableTypeSplit)-1]
-				w.Writef(level+1, "%s %s\n\n", humanReadableTypeName, field.GetName())
+				linebreaks := "\n\n"
+				if i == len(msg.Field)-1 {
+					linebreaks = "\n"
+				}
+				w.Writef(level+1, "%s %s%s", humanReadableTypeName, field.GetName(), linebreaks)
 			}
 		}
 	}
 
-	w.Writef(level, "}\n")
+	w.Writef(level, "}\n\n")
 }
 
 // printEnum prints an enum definition with its values and comments.
@@ -280,6 +297,9 @@ func printEnum(ctx context.Context, w SchemaWriter, key string, level int) {
 		valuePath := append(append([]int32(nil), path...), 2, int32(i))
 		printCommentIfAny(w, enumMetadata.fileDescriptor, valuePath, level)
 		w.WriteLine(level, value.GetName())
+		if i == len(enum.Value)-1 {
+			continue
+		}
 		w.WriteLine(level, "")
 	}
 }
