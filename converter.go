@@ -180,7 +180,7 @@ func main() {
 	defer func(outFile *os.File) {
 		err := outFile.Close()
 		if err != nil {
-
+			log.Fatal(err)
 		}
 	}(outFile)
 
