@@ -221,6 +221,12 @@ func printCommentIfAny(w SchemaWriter, fileDescriptor *descriptorpb.FileDescript
 	}
 }
 
+func getReadableTypeName(typeName string, splitter string) string {
+	typeNameSplit := strings.Split(typeName, splitter)
+	readableTypeName := typeNameSplit[len(typeNameSplit)-1]
+	return readableTypeName
+}
+
 //func fetchCommentIfAny(fileDescriptor *descriptorpb.FileDescriptorProto, path protoPath) string {
 //	if strings.HasPrefix(fileDescriptor.GetPackage(), "google.") == true {
 //		return ""
@@ -291,16 +297,15 @@ func printMessage(
 		} else {
 			// For non-repeated fields, if the type is a message or enum, print inline.
 			if field.GetType() == descriptorpb.FieldDescriptorProto_TYPE_MESSAGE {
-				header := fmt.Sprintf("%s %s", field.GetName(), typeName)
-				openEnum(w, level+1, header)
+				readableTypeName := getReadableTypeName(typeName, ".")
+				header := fmt.Sprintf("%s %s", field.GetName(), readableTypeName)
+				openBlock(w, level+1, header)
 				if _, ok := protoIndexes.messageIndex[typeName]; ok {
 					printMessage(ctx, w, typeName, level+2, visited)
 				}
-				closeEnum(w, level+1)
+				closeBlock(w, level+1)
 			} else if field.GetType() == descriptorpb.FieldDescriptorProto_TYPE_ENUM {
-				typeNameSplit := strings.Split(typeName, ".")
-				readableTypeName := typeNameSplit[len(typeNameSplit)-1]
-
+				readableTypeName := getReadableTypeName(typeName, ".")
 				if enumMeta, ok := protoIndexes.enumIndex[typeName]; ok {
 					printCommentIfAny(w, enumMeta.fileDescriptor, enumMeta.path, level+1)
 					openEnum(w, level+1, "ENUM "+readableTypeName)
@@ -308,9 +313,8 @@ func printMessage(
 					closeEnum(w, level+1)
 				}
 			} else {
-				humeanReadableTypeSplit := strings.Split(field.GetType().String(), "_")
-				humanReadableTypeName := humeanReadableTypeSplit[len(humeanReadableTypeSplit)-1]
-				w.Writef(level+1, "%s %s\n", humanReadableTypeName, field.GetName())
+				humanReadableTypeName := getReadableTypeName(field.GetType().String(), "_")
+				w.Writefln(level+1, "%s %s", humanReadableTypeName, field.GetName())
 			}
 		}
 		if i != len(msg.Field)-1 {
@@ -404,7 +408,6 @@ func indexNestedMessages(ctx context.Context, parent string) {
 			protoIndexes.addEnum(fqName, enumPath, parentFile, enum)
 		}
 	}
-
 }
 
 // equalPath compares two slices of int32 for equality.
