@@ -1,0 +1,72 @@
+// Our address book file is just one of these.
+AddressBook {
+  people [
+    Person {
+      // Name
+      STRING name
+    
+      // Unique ID number for this person.
+      INT32 id
+    
+      // email address
+      STRING email
+    
+      phones [
+        // Person's phone number
+        PhoneNumber {
+          STRING number
+        
+          // Phone Number type
+          ENUM PhoneType (
+            // Unspecified type
+            PHONE_TYPE_UNSPECIFIED
+            
+            // Mobile phone
+            PHONE_TYPE_MOBILE
+            
+            // Landline phone
+            PHONE_TYPE_HOME
+            
+            // Work or Business phone
+            PHONE_TYPE_WORK
+          )
+        }
+      ]
+    
+      // A comment for last_updated
+      last_updated Timestamp {
+        // In JSON format, the Timestamp type is encoded as a string in the RFC 3339 format.
+        Timestamp {
+          INT64 seconds
+        
+          INT32 nanos
+        }
+      }
+    
+      // physical address field
+      physical_address Address {
+        // Address message
+        Address {
+          // street name and number
+          STRING street
+        
+          // city name
+          STRING city
+        
+          // USA zipcode
+          INT32 zipcode
+        }
+      }
+    
+      // An example of a recursive field.
+      contacts [
+        <Circular Ref> Person
+      ]
+    }
+  ]
+}
+
+Nothing {
+  // Just a nothing burger
+  STRING burger
+}
