@@ -5,13 +5,12 @@ import (
 	"fmt"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/descriptorpb"
+	"google.golang.org/protobuf/types/pluginpb"
 	"io"
 	"log"
 	"os"
 	"strings"
 )
-
-const protoIndexKey = iota
 
 // Some fields, messages, etc have comments etc that are not useful
 type customProtoData struct {
@@ -54,6 +53,7 @@ var customProtoDataMap = map[string]*customProtoData{
 	//},
 }
 
+// --descriptor_set="./gen/addressbook.binpb" --out="./gen/addressbook.fdhschema"
 var (
 	descriptorSetPath = flag.String(
 		"descriptor_set",
@@ -64,11 +64,9 @@ var (
 	outSchemaPath = flag.String(
 		"out",
 		"",
-		"path to the .fdhschema file to write when using --descriptor_set. Defaults to replacing .binpb with .fdhschema.",
+		"path to the .fdhschema file to write when using --descriptor_set.",
 	)
 )
-
-// --descriptor_set="./gen/addressbook.binpb" --out="./gen/addressbook.fdhschema"
 
 type protoPath []int32
 
@@ -144,12 +142,12 @@ type SchemaWriter interface {
 	Writefln(level int, format string, args ...interface{})
 }
 
-type fileWriter struct {
+type customWriter struct {
 	writer io.Writer
 	logger *log.Logger
 }
 
-func (fw *fileWriter) Writef(level int, format string, args ...interface{}) {
+func (fw *customWriter) Writef(level int, format string, args ...interface{}) {
 	indent := strings.Repeat("  ", level)
 	_, err := fmt.Fprintf(fw.writer, indent+format, args...)
 	if err != nil {
@@ -157,7 +155,7 @@ func (fw *fileWriter) Writef(level int, format string, args ...interface{}) {
 	}
 }
 
-func (fw *fileWriter) WriteLine(level int, line string) {
+func (fw *customWriter) WriteLine(level int, line string) {
 	indent := strings.Repeat("  ", level)
 	_, err := fmt.Fprintf(fw.writer, "%s%s\n", indent, line)
 	if err != nil {
@@ -165,13 +163,13 @@ func (fw *fileWriter) WriteLine(level int, line string) {
 	}
 }
 
-func (fw *fileWriter) Writefln(level int, format string, args ...interface{}) {
+func (fw *customWriter) Writefln(level int, format string, args ...interface{}) {
 	fw.Writef(level, format, args...)
 	fw.WriteLine(0, "")
 }
 
-func NewFileWriter(w io.Writer, l *log.Logger) SchemaWriter {
-	return &fileWriter{
+func NewCustomWriter(w io.Writer, l *log.Logger) SchemaWriter {
+	return &customWriter{
 		writer: w,
 		logger: l,
 	}
@@ -225,18 +223,6 @@ func fetchCommentIfAny(key string, fileDescriptor *descriptorpb.FileDescriptorPr
 	return comment
 }
 
-//func fetchComment[T descriptorConstraint](metadata indexMetadata[T], path protoPath) string {
-//	if metadata.customData != nil && metadata.customData.customComment != nil {
-//		return *metadata.customData.customComment
-//	}
-//
-//	if strings.HasPrefix(metadata.fileDescriptor.GetPackage(), "google.") == true {
-//		return ""
-//	}
-//	comment := lookupComment(path, metadata.fileDescriptor.SourceCodeInfo)
-//	return comment
-//}
-
 // printMessage prints a message definition following the desired format.
 // It handles scalar fields, nested message fields, and enum fields.
 func printMessage(
@@ -246,8 +232,6 @@ func printMessage(
 	level int,
 	visited map[string]bool,
 ) {
-	//protoIndexes := ctx.Value(protoIndexKey).(*protoIndex)
-
 	msgMetadata := pIndex.messageIndex[msgKey]
 	msg := msgMetadata.descriptor
 	path := msgMetadata.path
@@ -261,7 +245,6 @@ func printMessage(
 
 	// If there is a comment on the message, print it.
 	printCommentIfAny(w, fetchCommentIfAny(msgKey, msgMetadata.fileDescriptor, path), level)
-	//printCommentIfAny(w, fetchComment(*msgMetadata, path), level)
 
 	openBlock(w, level, msg.GetName())
 
@@ -271,10 +254,8 @@ func printMessage(
 
 		typeName := field.GetTypeName()
 		printCommentIfAny(w, fetchCommentIfAny("", msgMetadata.fileDescriptor, fieldPath), level+1)
-		//printCommentIfAny(w, fetchComment(*msgMetadata, fieldPath), level+1)
 		// Depending on field type and label, print accordingly.
 		if field.GetLabel() == descriptorpb.FieldDescriptorProto_LABEL_REPEATED {
-
 			openList(w, level+1, field.GetName())
 
 			switch field.GetType() {
@@ -284,7 +265,6 @@ func printMessage(
 			case descriptorpb.FieldDescriptorProto_TYPE_ENUM:
 				if enumMeta, ok := pIndex.enumIndex[typeName]; ok {
 					printCommentIfAny(w, fetchCommentIfAny("", enumMeta.fileDescriptor, enumMeta.path), level+2)
-					//printCommentIfAny(w, fetchComment(*enumMeta, enumMeta.path), level+2)
 					openBlock(w, level+2, "ENUM "+enumMeta.descriptor.GetName())
 					printEnum(pIndex, w, typeName, level+2)
 					closeBlock(w, level+2)
@@ -305,9 +285,7 @@ func printMessage(
 			} else if field.GetType() == descriptorpb.FieldDescriptorProto_TYPE_ENUM {
 				readableTypeName := getReadableTypeName(typeName, ".")
 				if enumMeta, ok := pIndex.enumIndex[typeName]; ok {
-					//printCommentIfAny(w, fetchCommentIfAny(typeName, enumMeta.fileDescriptor, enumMeta.path), level+1)
 					printCommentIfAny(w, fetchCommentIfAny(enumMeta.key, enumMeta.fileDescriptor, enumMeta.path), level+1)
-					//printCommentIfAny(w, fetchComment(*enumMeta, enumMeta.path), level+1)
 					openEnum(w, level+1, "ENUM "+readableTypeName)
 					printEnum(pIndex, w, typeName, level+2)
 					closeEnum(w, level+1)
@@ -327,7 +305,6 @@ func printMessage(
 
 // printEnum prints an enum definition with its values and comments.
 func printEnum(pIndex protoIndex, w SchemaWriter, key string, level int) {
-	//protoIndexes := ctx.Value(protoIndexKey).(*protoIndex)
 	enumMetadata := pIndex.enumIndex[key]
 	enum := enumMetadata.descriptor
 	path := enumMetadata.path
@@ -337,7 +314,6 @@ func printEnum(pIndex protoIndex, w SchemaWriter, key string, level int) {
 		// For an enum value, the path is the enum's path plus [2, value_index] (2 = enum.value)
 		valuePath := append(append([]int32(nil), path...), 2, int32(i))
 		printCommentIfAny(w, fetchCommentIfAny("", enumMetadata.fileDescriptor, valuePath), level)
-		//printCommentIfAny(w, fetchComment(*enumMetadata, valuePath), level)
 		w.WriteLine(level, value.GetName())
 		if i == len(enum.Value)-1 {
 			continue
@@ -374,7 +350,7 @@ func findEntrypoints(messageIndex messageIndexType) []string {
 		// Process fields in this message.
 		for _, field := range metadata.descriptor.Field {
 			if field.GetType() == descriptorpb.FieldDescriptorProto_TYPE_MESSAGE {
-				// Mark the type as used. The field type name should be fully qualified.
+				// Mark the type as used
 				used[field.GetTypeName()] = true
 			}
 		}
@@ -391,8 +367,6 @@ func findEntrypoints(messageIndex messageIndexType) []string {
 }
 
 func indexNestedMessages(pIndex protoIndex, parent string) {
-	//protoIndexes := ctx.Value(protoIndexKey).(*protoIndex)
-
 	if msgMetadata, ok := pIndex.messageIndex[parent]; ok {
 		parentPath := msgMetadata.path
 		parentFile := msgMetadata.fileDescriptor
@@ -406,7 +380,6 @@ func indexNestedMessages(pIndex protoIndex, parent string) {
 				pIndex.addMessage(fqName, nestedPath, parentFile, nested, nil)
 			}
 
-			//pIndex.addMessage(fqName, nestedPath, parentFile, nested)
 			indexNestedMessages(pIndex, fqName)
 		}
 
@@ -419,8 +392,6 @@ func indexNestedMessages(pIndex protoIndex, parent string) {
 			} else {
 				pIndex.addEnum(fqName, enumPath, parentFile, enum, nil)
 			}
-
-			//pIndex.addEnum(fqName, enumPath, parentFile, enum)
 		}
 	}
 }
@@ -438,29 +409,10 @@ func equalPath(a, b protoPath) bool {
 	return true
 }
 
-func runStandalone(descriptorPath *string, outPath *string) int {
-	//descriptorPath := "gen/addressbook.binpb"
-	//fdhSchemaPath := "gen/addressbook.fdhschema"
-	logger := log.New(os.Stderr, "", log.LstdFlags|log.Lmicroseconds|log.Lshortfile)
+func buildProtoIndex(files []*descriptorpb.FileDescriptorProto) *protoIndex {
 	pIndex := newProtoIndex()
-	//ctx := context.WithValue(context.TODO(), protoIndexKey, pIndex)
 
-	logger.Println("Attempting to read binbp")
-	// Read the file descriptor set generated by protoc.
-	data, err := os.ReadFile(*descriptorPath)
-	if err != nil {
-		logger.Fatalf("Failed to read descriptor set: %v", err)
-	}
-	logger.Printf("Read descriptor set: %s", *descriptorPath)
-
-	// Unmarshal the data into a FileDescriptorSet.
-	var fds descriptorpb.FileDescriptorSet
-	if err := proto.Unmarshal(data, &fds); err != nil {
-		logger.Fatalf("Failed to unmarshal descriptor set: %v", err)
-	}
-	logger.Println("Unmarshalled descriptor set.")
-
-	for _, file := range fds.File {
+	for _, file := range files {
 		packageName := "." + file.GetPackage()
 
 		// Build lookup maps for top-level messages and enums.
@@ -474,7 +426,6 @@ func runStandalone(descriptorPath *string, outPath *string) int {
 				pIndex.addMessage(fqName, topMsgPath, file, msg, nil)
 			}
 
-			//indexNestedMessages(fqName, msg, file, topMsgPath, pIndex)
 			indexNestedMessages(*pIndex, fqName)
 
 		}
@@ -491,10 +442,32 @@ func runStandalone(descriptorPath *string, outPath *string) int {
 		}
 	}
 
+	return pIndex
+}
+
+func runStandalone(descriptorPath *string, outPath *string) {
+	logger := log.New(os.Stderr, "", log.LstdFlags|log.Lmicroseconds|log.Lshortfile)
+
+	logger.Println("Attempting to read binbp")
+	// Read the file descriptor set generated by protoc.
+	data, err := os.ReadFile(*descriptorPath)
+	if err != nil {
+		logger.Fatalf("Failed to read descriptor set: %v", err)
+	}
+	logger.Printf("Read descriptor set: %s", *descriptorPath)
+
+	// Unmarshal the data into a FileDescriptorSet.
+	var fds descriptorpb.FileDescriptorSet
+	if err := proto.Unmarshal(data, &fds); err != nil {
+		logger.Fatalf("Failed to unmarshal descriptor set: %v", err)
+	}
+	logger.Println("Unmarshalled descriptor set.")
+
+	pIndex := buildProtoIndex(fds.File)
+
 	logger.Println("finish parsing descriptor set.")
-	// Create or open the output file.
 	outFile, err := os.Create(*outPath)
-	sw := NewFileWriter(outFile, logger)
+	schemaWriter := NewCustomWriter(outFile, logger)
 	if err != nil {
 		logger.Fatalf("Failed to create output file: %v", err)
 	}
@@ -509,15 +482,103 @@ func runStandalone(descriptorPath *string, outPath *string) int {
 
 	for i, ep := range entryPoints {
 		if _, ok := pIndex.messageIndex[ep]; ok {
-			printMessage(*pIndex, sw, ep, 0, make(map[string]bool))
+			printMessage(*pIndex, schemaWriter, ep, 0, make(map[string]bool))
 
 			// make sure we have a blank line between top level messages
 			if i != len(entryPoints)-1 {
-				sw.WriteLine(0, "")
+				schemaWriter.WriteLine(0, "")
 			}
 		}
 	}
-	return 0
+}
+
+func runAsPlugin(r io.Reader, w io.Writer) {
+	// protoc plugins only read from sdtin
+	data, err := io.ReadAll(r)
+	if err != nil {
+		log.Fatalf("plugin: failed to read stdin: %v", err)
+	}
+
+	// CodeGeneratorRequest is slightly different than the data in .binpb files
+	// data in .binpb seems like it's a subset of CodeGeneratorRequest but I don't
+	// know the implications of converting yet
+	var req pluginpb.CodeGeneratorRequest
+	if err := proto.Unmarshal(data, &req); err != nil {
+		log.Fatalf("plugin: failed to unmarshal CodeGeneratorRequest: %v", err)
+	}
+
+	pIndex := buildProtoIndex(req.GetProtoFile())
+
+	// This is what is sent back to protoc via stdout
+	resp := &pluginpb.CodeGeneratorResponse{}
+
+	// For each .proto that protoc asked you to generate,
+	// find the matching FileDescriptorProto and produce one .fdhschema chunk.
+	// In plugin mode, each file passed to protoc will be treated as a top level file
+	// but no output file may be generated depending if the content of that proto
+	// is already contained in another file (aka if file has no entryPoints
+	for _, filename := range req.FileToGenerate {
+		log.Printf("Plugin mode FileToGenerate: %s", filename)
+		var fdProto *descriptorpb.FileDescriptorProto
+		for _, f := range req.GetProtoFile() {
+			if f.GetName() == filename {
+				fdProto = f
+				break
+			}
+		}
+		// Is there ever a case where the FileDescriptor proto could not be found
+		// in the same req?
+		if fdProto == nil {
+			continue
+		}
+
+		// Filter entrypoints that belong to this file
+		var entriesForFile []string
+		entryPoints := findEntrypoints(pIndex.messageIndex)
+		for _, ep := range entryPoints {
+			if meta, ok := pIndex.messageIndex[ep]; ok && meta.fileDescriptor == fdProto {
+				entriesForFile = append(entriesForFile, ep)
+			}
+		}
+
+		log.Printf("Plugin mode FileToGenerate: %s with entriesForFile: %s", filename, entriesForFile)
+		// Skip if this file has no entry points
+		// no entry points means stuff defined in this file is contained in another file
+		if len(entriesForFile) == 0 {
+			log.Printf("Skipping: %s because file had no entry points", filename)
+			continue
+		}
+
+		// in-memory buffer
+		var buf strings.Builder
+		logger := log.New(io.Discard, "", 0) // or stderr if you want plugin logs
+		schemaWriter := NewCustomWriter(&buf, logger)
+
+		for i, ep := range entriesForFile {
+			printMessage(*pIndex, schemaWriter, ep, 0, make(map[string]bool))
+
+			// make sure we have a blank line between top level messages
+			if i != len(entriesForFile)-1 {
+				schemaWriter.WriteLine(0, "")
+			}
+		}
+
+		// Add content to response expected by protoc
+		outName := strings.TrimSuffix(filename, ".proto") + ".fdhschema"
+		resp.File = append(resp.File, &pluginpb.CodeGeneratorResponse_File{
+			Name:    proto.String(outName),
+			Content: proto.String(buf.String()),
+		})
+	}
+
+	// Marshal & write the response to stdout
+	outBytes, err := proto.Marshal(resp)
+	if err != nil {
+		log.Fatalf("plugin: failed to marshal CodeGeneratorResponse: %v", err)
+	}
+	if _, err := w.Write(outBytes); err != nil {
+		log.Fatalf("plugin: failed to write response: %v", err)
+	}
 }
 
 func main() {
@@ -525,8 +586,11 @@ func main() {
 
 	if *descriptorSetPath != "" {
 		// Standalone mode: read a .binpb descriptor set, index it, write one .fdhschema.
-		_ = runStandalone(descriptorSetPath, outSchemaPath)
+		// Unlike plugin mode, all top level schemas regardless of which file they came
+		// from will be output in the same file
+		runStandalone(descriptorSetPath, outSchemaPath)
 		return
 	}
 
+	runAsPlugin(os.Stdin, os.Stdout)
 }
