@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/descriptorpb"
@@ -224,15 +223,15 @@ func fetchCommentIfAny(key string, fileDescriptor *descriptorpb.FileDescriptorPr
 // printMessage prints a message definition following the desired format.
 // It handles scalar fields, nested message fields, and enum fields.
 func printMessage(
-	ctx context.Context,
+	pIndex protoIndex,
 	w SchemaWriter,
 	msgKey string,
 	level int,
 	visited map[string]bool,
 ) {
-	protoIndexes := ctx.Value(protoIndexKey).(*protoIndex)
+	//protoIndexes := ctx.Value(protoIndexKey).(*protoIndex)
 
-	msgMetadata := protoIndexes.messageIndex[msgKey]
+	msgMetadata := pIndex.messageIndex[msgKey]
 	msg := msgMetadata.descriptor
 	path := msgMetadata.path
 
@@ -263,14 +262,14 @@ func printMessage(
 
 			switch field.GetType() {
 			case descriptorpb.FieldDescriptorProto_TYPE_MESSAGE:
-				printMessage(ctx, w, typeName, level+2, visited)
+				printMessage(pIndex, w, typeName, level+2, visited)
 
 			case descriptorpb.FieldDescriptorProto_TYPE_ENUM:
-				if enumMeta, ok := protoIndexes.enumIndex[typeName]; ok {
+				if enumMeta, ok := pIndex.enumIndex[typeName]; ok {
 					printCommentIfAny(w, fetchCommentIfAny("", enumMeta.fileDescriptor, enumMeta.path), level+2)
 					//printCommentIfAny(w, fetchComment(*enumMeta, enumMeta.path), level+2)
 					openBlock(w, level+2, "ENUM "+enumMeta.descriptor.GetName())
-					printEnum(ctx, w, typeName, level+2)
+					printEnum(pIndex, w, typeName, level+2)
 					closeBlock(w, level+2)
 				}
 			}
@@ -282,18 +281,18 @@ func printMessage(
 				readableTypeName := getReadableTypeName(typeName, ".")
 				header := fmt.Sprintf("%s %s", field.GetName(), readableTypeName)
 				openBlock(w, level+1, header)
-				if _, ok := protoIndexes.messageIndex[typeName]; ok {
-					printMessage(ctx, w, typeName, level+2, visited)
+				if _, ok := pIndex.messageIndex[typeName]; ok {
+					printMessage(pIndex, w, typeName, level+2, visited)
 				}
 				closeBlock(w, level+1)
 			} else if field.GetType() == descriptorpb.FieldDescriptorProto_TYPE_ENUM {
 				readableTypeName := getReadableTypeName(typeName, ".")
-				if enumMeta, ok := protoIndexes.enumIndex[typeName]; ok {
+				if enumMeta, ok := pIndex.enumIndex[typeName]; ok {
 					//printCommentIfAny(w, fetchCommentIfAny(typeName, enumMeta.fileDescriptor, enumMeta.path), level+1)
 					printCommentIfAny(w, fetchCommentIfAny(enumMeta.key, enumMeta.fileDescriptor, enumMeta.path), level+1)
 					//printCommentIfAny(w, fetchComment(*enumMeta, enumMeta.path), level+1)
 					openEnum(w, level+1, "ENUM "+readableTypeName)
-					printEnum(ctx, w, typeName, level+2)
+					printEnum(pIndex, w, typeName, level+2)
 					closeEnum(w, level+1)
 				}
 			} else {
@@ -310,9 +309,9 @@ func printMessage(
 }
 
 // printEnum prints an enum definition with its values and comments.
-func printEnum(ctx context.Context, w SchemaWriter, key string, level int) {
-	protoIndexes := ctx.Value(protoIndexKey).(*protoIndex)
-	enumMetadata := protoIndexes.enumIndex[key]
+func printEnum(pIndex protoIndex, w SchemaWriter, key string, level int) {
+	//protoIndexes := ctx.Value(protoIndexKey).(*protoIndex)
+	enumMetadata := pIndex.enumIndex[key]
 	enum := enumMetadata.descriptor
 	path := enumMetadata.path
 
@@ -374,10 +373,10 @@ func findEntrypoints(messageIndex messageIndexType) []string {
 	return entrypoints
 }
 
-func indexNestedMessages(ctx context.Context, parent string) {
-	protoIndexes := ctx.Value(protoIndexKey).(*protoIndex)
+func indexNestedMessages(pIndex protoIndex, parent string) {
+	//protoIndexes := ctx.Value(protoIndexKey).(*protoIndex)
 
-	if msgMetadata, ok := protoIndexes.messageIndex[parent]; ok {
+	if msgMetadata, ok := pIndex.messageIndex[parent]; ok {
 		parentPath := msgMetadata.path
 		parentFile := msgMetadata.fileDescriptor
 		for j, nested := range msgMetadata.descriptor.NestedType {
@@ -385,13 +384,13 @@ func indexNestedMessages(ctx context.Context, parent string) {
 			nestedPath := append(append([]int32(nil), parentPath...), 3, int32(j))
 
 			if cpd, ok := customProtoDataMap[fqName]; ok {
-				protoIndexes.addMessage(fqName, nestedPath, parentFile, nested, cpd)
+				pIndex.addMessage(fqName, nestedPath, parentFile, nested, cpd)
 			} else {
-				protoIndexes.addMessage(fqName, nestedPath, parentFile, nested, nil)
+				pIndex.addMessage(fqName, nestedPath, parentFile, nested, nil)
 			}
 
-			//protoIndexes.addMessage(fqName, nestedPath, parentFile, nested)
-			indexNestedMessages(ctx, fqName)
+			//pIndex.addMessage(fqName, nestedPath, parentFile, nested)
+			indexNestedMessages(pIndex, fqName)
 		}
 
 		for j, enum := range msgMetadata.descriptor.EnumType {
@@ -399,12 +398,12 @@ func indexNestedMessages(ctx context.Context, parent string) {
 			enumPath := append(append([]int32(nil), parentPath...), 3, int32(j))
 
 			if cpd, ok := customProtoDataMap[fqName]; ok {
-				protoIndexes.addEnum(fqName, enumPath, parentFile, enum, cpd)
+				pIndex.addEnum(fqName, enumPath, parentFile, enum, cpd)
 			} else {
-				protoIndexes.addEnum(fqName, enumPath, parentFile, enum, nil)
+				pIndex.addEnum(fqName, enumPath, parentFile, enum, nil)
 			}
 
-			//protoIndexes.addEnum(fqName, enumPath, parentFile, enum)
+			//pIndex.addEnum(fqName, enumPath, parentFile, enum)
 		}
 	}
 }
@@ -427,7 +426,7 @@ func main() {
 	fdhSchemaPath := "gen/addressbook.fdhschema"
 	logger := log.New(os.Stderr, "", log.LstdFlags|log.Lmicroseconds|log.Lshortfile)
 	pIndex := newProtoIndex()
-	ctx := context.WithValue(context.TODO(), protoIndexKey, pIndex)
+	//ctx := context.WithValue(context.TODO(), protoIndexKey, pIndex)
 
 	logger.Println("Attempting to read binbp")
 	// Read the file descriptor set generated by protoc.
@@ -459,7 +458,7 @@ func main() {
 			}
 
 			//indexNestedMessages(fqName, msg, file, topMsgPath, pIndex)
-			indexNestedMessages(ctx, fqName)
+			indexNestedMessages(*pIndex, fqName)
 
 		}
 		for i, enum := range file.EnumType {
@@ -493,7 +492,7 @@ func main() {
 
 	for i, ep := range entryPoints {
 		if _, ok := pIndex.messageIndex[ep]; ok {
-			printMessage(ctx, sw, ep, 0, make(map[string]bool))
+			printMessage(*pIndex, sw, ep, 0, make(map[string]bool))
 
 			// make sure we have a blank line between top level messages
 			if i != len(entryPoints)-1 {
