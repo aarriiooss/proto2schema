@@ -15,18 +15,38 @@ const protoIndexKey = iota
 
 // Some fields, messages, etc have comments etc that are not useful
 type customProtoData struct {
-	customComment string
-	customType    string
-	customName    string
+	customComment *string
+	customType    *string
+	customName    *string
+}
+
+func newCustomProtoData(comment string, customType string, name string) *customProtoData {
+	cpd := customProtoData{}
+
+	if comment != "" {
+		cpd.customComment = &comment
+	}
+	if customType != "" {
+		cpd.customType = &customType
+	}
+	if name != "" {
+		cpd.customName = &name
+	}
+	return &cpd
 }
 
 // currently only custom comment fetching is implemented
-var customProtoDataMap = map[string]customProtoData{
-	".google.protobuf.Timestamp": {
-		customComment: "In JSON format, the Timestamp type is encoded as a string in the RFC 3339 format.",
-		customType:    "",
-		customName:    "",
-	},
+var customProtoDataMap = map[string]*customProtoData{
+	".google.protobuf.Timestamp": newCustomProtoData(
+		"In JSON format, the Timestamp type is encoded as a string in the RFC 3339 format.",
+		"",
+		"",
+	),
+	//".google.protobuf.Timestamp": {
+	//	customComment: "In JSON format, the Timestamp type is encoded as a string in the RFC 3339 format.",
+	//	customType:    "",
+	//	customName:    "",
+	//},
 	//".tutorial.PhoneType": {
 	//	customComment: "abcdef",
 	//	customType:    "",
@@ -52,6 +72,8 @@ type indexMetadata[T descriptorConstraint] struct {
 
 	// key in parent map - is this needed?
 	key string
+
+	customData *customProtoData
 }
 
 type messageIndexType map[string]*indexMetadata[*descriptorpb.DescriptorProto]
@@ -68,6 +90,7 @@ func addMetadata[T descriptorConstraint](
 	descriptor T,
 	file *descriptorpb.FileDescriptorProto,
 	path protoPath,
+	data *customProtoData,
 ) {
 	md, ok := indexMap[key]
 	if !ok {
@@ -78,14 +101,15 @@ func addMetadata[T descriptorConstraint](
 	md.fileDescriptor = file
 	md.path = path
 	md.key = key
+	md.customData = data
 }
 
-func (p protoIndex) addMessage(key string, path protoPath, file *descriptorpb.FileDescriptorProto, message *descriptorpb.DescriptorProto) {
-	addMetadata(p.messageIndex, key, message, file, path)
+func (p protoIndex) addMessage(key string, path protoPath, file *descriptorpb.FileDescriptorProto, message *descriptorpb.DescriptorProto, data *customProtoData) {
+	addMetadata(p.messageIndex, key, message, file, path, data)
 }
 
-func (p protoIndex) addEnum(key string, path protoPath, file *descriptorpb.FileDescriptorProto, message *descriptorpb.EnumDescriptorProto) {
-	addMetadata(p.enumIndex, key, message, file, path)
+func (p protoIndex) addEnum(key string, path protoPath, file *descriptorpb.FileDescriptorProto, message *descriptorpb.EnumDescriptorProto, data *customProtoData) {
+	addMetadata(p.enumIndex, key, message, file, path, data)
 }
 
 func newProtoIndex() *protoIndex {
@@ -190,7 +214,13 @@ func main() {
 		for i, msg := range file.MessageType {
 			fqName := packageName + "." + msg.GetName()
 			topMsgPath := protoPath{4, int32(i)}
-			pIndex.addMessage(fqName, topMsgPath, file, msg)
+
+			if cpd, ok := customProtoDataMap[fqName]; ok {
+				pIndex.addMessage(fqName, topMsgPath, file, msg, cpd)
+			} else {
+				pIndex.addMessage(fqName, topMsgPath, file, msg, nil)
+			}
+
 			//indexNestedMessages(fqName, msg, file, topMsgPath, pIndex)
 			indexNestedMessages(ctx, fqName)
 
@@ -198,7 +228,13 @@ func main() {
 		for i, enum := range file.EnumType {
 			fqName := packageName + "." + enum.GetName()
 			enumPath := protoPath{5, int32(i)}
-			pIndex.addEnum(fqName, enumPath, file, enum)
+
+			if cpd, ok := customProtoDataMap[fqName]; ok {
+				pIndex.addEnum(fqName, enumPath, file, enum, cpd)
+			} else {
+				pIndex.addEnum(fqName, enumPath, file, enum, nil)
+			}
+
 		}
 	}
 
@@ -244,7 +280,7 @@ func getReadableTypeName(typeName string, splitter string) string {
 
 func fetchCommentIfAny(key string, fileDescriptor *descriptorpb.FileDescriptorProto, path protoPath) string {
 	if comment, ok := customProtoDataMap[key]; ok {
-		return comment.customComment
+		return *comment.customComment
 	}
 
 	if strings.HasPrefix(fileDescriptor.GetPackage(), "google.") == true {
@@ -253,6 +289,18 @@ func fetchCommentIfAny(key string, fileDescriptor *descriptorpb.FileDescriptorPr
 	comment := lookupComment(path, fileDescriptor.SourceCodeInfo)
 	return comment
 }
+
+//func fetchComment[T descriptorConstraint](metadata indexMetadata[T], path protoPath) string {
+//	if metadata.customData != nil && metadata.customData.customComment != nil {
+//		return *metadata.customData.customComment
+//	}
+//
+//	if strings.HasPrefix(metadata.fileDescriptor.GetPackage(), "google.") == true {
+//		return ""
+//	}
+//	comment := lookupComment(path, metadata.fileDescriptor.SourceCodeInfo)
+//	return comment
+//}
 
 // printMessage prints a message definition following the desired format.
 // It handles scalar fields, nested message fields, and enum fields.
@@ -278,6 +326,7 @@ func printMessage(
 
 	// If there is a comment on the message, print it.
 	printCommentIfAny(w, fetchCommentIfAny(msgKey, msgMetadata.fileDescriptor, path), level)
+	//printCommentIfAny(w, fetchComment(*msgMetadata, path), level)
 
 	openBlock(w, level, msg.GetName())
 
@@ -287,6 +336,7 @@ func printMessage(
 
 		typeName := field.GetTypeName()
 		printCommentIfAny(w, fetchCommentIfAny("", msgMetadata.fileDescriptor, fieldPath), level+1)
+		//printCommentIfAny(w, fetchComment(*msgMetadata, fieldPath), level+1)
 		// Depending on field type and label, print accordingly.
 		if field.GetLabel() == descriptorpb.FieldDescriptorProto_LABEL_REPEATED {
 
@@ -299,6 +349,7 @@ func printMessage(
 			case descriptorpb.FieldDescriptorProto_TYPE_ENUM:
 				if enumMeta, ok := protoIndexes.enumIndex[typeName]; ok {
 					printCommentIfAny(w, fetchCommentIfAny("", enumMeta.fileDescriptor, enumMeta.path), level+2)
+					//printCommentIfAny(w, fetchComment(*enumMeta, enumMeta.path), level+2)
 					openBlock(w, level+2, "ENUM "+enumMeta.descriptor.GetName())
 					printEnum(ctx, w, typeName, level+2)
 					closeBlock(w, level+2)
@@ -319,7 +370,9 @@ func printMessage(
 			} else if field.GetType() == descriptorpb.FieldDescriptorProto_TYPE_ENUM {
 				readableTypeName := getReadableTypeName(typeName, ".")
 				if enumMeta, ok := protoIndexes.enumIndex[typeName]; ok {
-					printCommentIfAny(w, fetchCommentIfAny(typeName, enumMeta.fileDescriptor, enumMeta.path), level+1)
+					//printCommentIfAny(w, fetchCommentIfAny(typeName, enumMeta.fileDescriptor, enumMeta.path), level+1)
+					printCommentIfAny(w, fetchCommentIfAny(enumMeta.key, enumMeta.fileDescriptor, enumMeta.path), level+1)
+					//printCommentIfAny(w, fetchComment(*enumMeta, enumMeta.path), level+1)
 					openEnum(w, level+1, "ENUM "+readableTypeName)
 					printEnum(ctx, w, typeName, level+2)
 					closeEnum(w, level+1)
@@ -349,6 +402,7 @@ func printEnum(ctx context.Context, w SchemaWriter, key string, level int) {
 		// For an enum value, the path is the enum's path plus [2, value_index] (2 = enum.value)
 		valuePath := append(append([]int32(nil), path...), 2, int32(i))
 		printCommentIfAny(w, fetchCommentIfAny("", enumMetadata.fileDescriptor, valuePath), level)
+		//printCommentIfAny(w, fetchComment(*enumMetadata, valuePath), level)
 		w.WriteLine(level, value.GetName())
 		if i == len(enum.Value)-1 {
 			continue
@@ -410,14 +464,28 @@ func indexNestedMessages(ctx context.Context, parent string) {
 		for j, nested := range msgMetadata.descriptor.NestedType {
 			fqName := parent + "." + nested.GetName()
 			nestedPath := append(append([]int32(nil), parentPath...), 3, int32(j))
-			protoIndexes.addMessage(fqName, nestedPath, parentFile, nested)
+
+			if cpd, ok := customProtoDataMap[fqName]; ok {
+				protoIndexes.addMessage(fqName, nestedPath, parentFile, nested, cpd)
+			} else {
+				protoIndexes.addMessage(fqName, nestedPath, parentFile, nested, nil)
+			}
+
+			//protoIndexes.addMessage(fqName, nestedPath, parentFile, nested)
 			indexNestedMessages(ctx, fqName)
 		}
 
 		for j, enum := range msgMetadata.descriptor.EnumType {
 			fqName := parent + "." + enum.GetName()
 			enumPath := append(append([]int32(nil), parentPath...), 3, int32(j))
-			protoIndexes.addEnum(fqName, enumPath, parentFile, enum)
+
+			if cpd, ok := customProtoDataMap[fqName]; ok {
+				protoIndexes.addEnum(fqName, enumPath, parentFile, enum, cpd)
+			} else {
+				protoIndexes.addEnum(fqName, enumPath, parentFile, enum, nil)
+			}
+
+			//protoIndexes.addEnum(fqName, enumPath, parentFile, enum)
 		}
 	}
 }
